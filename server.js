@@ -153,7 +153,6 @@ app.get('/api/osint', async (req, res) => {
     }
   }
 });
-});
 
 // ── Camera stream proxy — solves mixed-content block ─────────
 //    Browser on https:// can't load http:// camera images directly.

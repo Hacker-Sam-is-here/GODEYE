@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GODEYE — Geospatial Intelligence Dashboard</title>
+  <meta name="description" content="Real-time geospatial intelligence dashboard with live flight tracking, AIS ship tracking, satellite positions, conflict zones, and global OSINT news feeds.">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+  <!-- MapLibre GL JS v5 (globe projection requires v5+) -->
+  <link href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css" rel="stylesheet">
+
+
+
+
+  <!-- GODEYE CSS -->
+  <link rel="stylesheet" href="css/loading.css">
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/panels.css">
+</head>
+<body class="mode-normal">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- LOADING SCREEN                                             -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="loading-screen">
+  <div class="loading-logo">⊕ GODEYE</div>
+  <div class="loading-subtitle">GEOSPATIAL INTELLIGENCE SYSTEM v2.0</div>
+  <div class="loading-terminal" id="loading-terminal"></div>
+  <div class="loading-bar-container">
+    <div class="loading-bar" id="loading-bar"></div>
+  </div>
+  <div class="loading-percent" id="loading-percent">0%</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- ALERT BANNER                                               -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="alert-banner"></div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- TOP BAR                                                    -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="top-bar">
+  <div class="top-bar-left">
+    <div class="logo-mark">⊕ GODEYE</div>
+    <select id="map-style-select" title="Map Style">
+      <option value="dark">DARK MATTER</option>
+      <option value="voyager">VOYAGER</option>
+      <option value="satellite">SATELLITE</option>
+      <option value="esri">ESRI IMAGERY</option>
+      <option value="osm">OPENSTREETMAP</option>
+    </select>
+  </div>
+
+  <div class="top-bar-center">
+    <div class="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="search-input" placeholder="SEARCH: city, coords, ICAO, MMSI, IP..." autocomplete="off">
+      <button id="btn-quick-jump" class="pill-btn" title="Quick Jump">QUICK JUMP ▾</button>
+      <div id="quick-jump-menu" class="dropdown-menu hidden"></div>
+      <div id="search-results"  class="dropdown-menu hidden"></div>
+    </div>
+    <div id="utc-clock" class="utc-clock">----</div>
+  </div>
+
+  <div class="top-bar-right">
+    <div id="feeds-indicator" class="feeds-indicator">
+      <span class="blink-dot">●</span> LIVE &nbsp; FEEDS: <span id="feed-count">0</span> ACTIVE
+    </div>
+    <div class="filter-modes" title="Visual Filter">
+      <button class="filter-btn active" data-mode="normal"       title="Normal">◉</button>
+      <button class="filter-btn"        data-mode="night-vision" title="Night Vision">👁</button>
+      <button class="filter-btn"        data-mode="thermal"      title="Thermal/FLIR">🌡</button>
+      <button class="filter-btn"        data-mode="crt"          title="CRT Scanlines">📺</button>
+      <button class="filter-btn"        data-mode="grayscale"    title="Grayscale">◐</button>
+      <button class="filter-btn"        data-mode="deep-night"   title="Deep Night">🌑</button>
+    </div>
+    <button id="btn-share"      class="pill-btn" title="Share Current View">🔗 SHARE</button>
+    <button id="btn-audio"      class="icon-btn" title="Toggle Audio (A)">🔇</button>
+    <button id="btn-timeslider" class="icon-btn" title="Time Playback">⏱</button>
+    <button id="btn-fullscreen" class="icon-btn" title="Fullscreen (F)">⛶</button>
+    <button id="btn-help"       class="icon-btn" title="Help (?)">?</button>
+  </div>
+</div>
+
+<!-- Classification Banner -->
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- MAP CONTAINER                                              -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="map-container">
+  <div id="map-2d"></div>
+  <!-- Scope HUD always over map-2d; shown only in 3D mode via CSS -->
+
+  <!-- ═══ 3D SCOPE HUD — Spy-Satellite Viewport Overlay ════ -->
+  <div id="scope-hud" class="hidden">
+
+    <!-- Oval vignette — dark outside, clear inside -->
+    <div id="scope-vignette"></div>
+
+    <!-- Animated scan sweep -->
+    <div id="scope-scanline"></div>
+
+    <!-- Center crosshair reticle -->
+    <div id="scope-reticle">
+      <div class="reticle-h"></div>
+      <div class="reticle-v"></div>
+      <div class="reticle-circle-outer"></div>
+      <div class="reticle-circle-inner"></div>
+    </div>
+
+    <!-- Corner HUD brackets -->
+    <div class="scope-corner scope-corner-tl">
+      <svg width="50" height="50" viewBox="0 0 50 50"><path d="M2 25 L2 2 L25 2" fill="none" stroke="rgba(0,200,255,0.85)" stroke-width="2"/><circle cx="2" cy="2" r="2" fill="rgba(0,200,255,0.85)"/></svg>
+    </div>
+    <div class="scope-corner scope-corner-tr">
+      <svg width="50" height="50" viewBox="0 0 50 50"><path d="M25 2 L48 2 L48 25" fill="none" stroke="rgba(0,200,255,0.85)" stroke-width="2"/><circle cx="48" cy="2" r="2" fill="rgba(0,200,255,0.85)"/></svg>
+    </div>
+    <div class="scope-corner scope-corner-bl">
+      <svg width="50" height="50" viewBox="0 0 50 50"><path d="M2 25 L2 48 L25 48" fill="none" stroke="rgba(0,200,255,0.85)" stroke-width="2"/><circle cx="2" cy="48" r="2" fill="rgba(0,200,255,0.85)"/></svg>
+    </div>
+    <div class="scope-corner scope-corner-br">
+      <svg width="50" height="50" viewBox="0 0 50 50"><path d="M25 48 L48 48 L48 25" fill="none" stroke="rgba(0,200,255,0.85)" stroke-width="2"/><circle cx="48" cy="48" r="2" fill="rgba(0,200,255,0.85)"/></svg>
+    </div>
+
+    <!-- Top-left — Classification + sensor info -->
+    <div id="scope-hud-tl">
+      <div class="scope-classify">TOP SECRET // SI-TK // NOFORN</div>
+      <div class="scope-meta" id="scope-sensor-id">PANOPTIC VISION SN2/FPA: ORB01:2.44-A SWS</div>
+      <div class="scope-meta scope-bold">⊕ GODEYE</div>
+      <div class="scope-meta">WV GEOSPATIAL INTELLIGENCE PLATFORM</div>
+      <div class="scope-label" style="margin-top:10px">GLOSSARY</div>
+      <div class="scope-meta" id="scope-location-label">ACQUIRING TARGET LOCK…</div>
+      <div class="scope-label" style="margin-top:10px">ACTIVE LAYERS</div>
+      <div class="scope-meta" id="scope-layers-summary">AIR TRAFFIC · SHIPS · SATELLITES</div>
+    </div>
+
+    <!-- Top-right — Orbit telemetry -->
+    <div id="scope-hud-tr">
+      <div class="scope-rec-line">
+        <span class="scope-dot-red">●</span> REC <span id="scope-rec-time">2026-05-17 00:00:00Z</span>
+      </div>
+      <div class="scope-trow"><span class="scope-tlabel">ORB:</span> <span id="scope-orb">47438</span> &nbsp; <span class="scope-tlabel">PASS:</span> <span id="scope-pass">DESC-579</span></div>
+
+      <div class="scope-divider"></div>
+
+      <div class="scope-slider-block">
+        <div class="scope-slider-row">
+          <span class="scope-tlabel">◈ BLOOM</span>
+          <div class="scope-bar"><div class="scope-bar-fill" style="width:80%"></div></div>
+          <span class="scope-tval">100</span>
+        </div>
+        <div class="scope-slider-row">
+          <span class="scope-tlabel">◈ SHARPEN</span>
+          <div class="scope-bar"><div class="scope-bar-fill" style="width:35%"></div></div>
+          <span class="scope-tval">10k</span>
+        </div>
+        <div class="scope-slider-row">
+          <span class="scope-tlabel">◈ FOG</span>
+          <div class="scope-bar"><div class="scope-bar-fill" style="width:20%"></div></div>
+          <span class="scope-tval">OFF</span>
+        </div>
+      </div>
+
+      <div class="scope-divider"></div>
+
+      <div class="scope-trow"><span class="scope-tlabel">MODE</span> <span class="scope-mode-badge">Tactical</span></div>
+      <div class="scope-trow"><span class="scope-tlabel">PANOPTIC</span> <span class="scope-active-badge">ACTIVE</span></div>
+    </div>
+
+    <!-- Bottom-left — MGRS + DMS coordinates -->
+    <div id="scope-hud-bl">
+      <div class="scope-mgrs" id="scope-mgrs-display">MGRS: -- -- ---- ----</div>
+      <div class="scope-dms" id="scope-dms-display">--°--'--"N ---°--'--"E</div>
+      <div class="scope-meta" id="scope-alt-display">ALT: -- km &nbsp;·&nbsp; ZOOM: --</div>
+    </div>
+
+    <!-- Bottom-right — Satellite imagery metadata -->
+    <div id="scope-hud-br">
+      <div class="scope-trow"><span class="scope-tlabel">GSD</span> <span id="scope-gsd">0.31M</span> &nbsp;<span class="scope-tlabel">NIIRS:</span> <span id="scope-niirs">7.1</span></div>
+      <div class="scope-trow"><span class="scope-tlabel">ALT</span> <span id="scope-sat-alt">611km</span> &nbsp;<span class="scope-tlabel">SUN:</span> <span id="scope-sun">-40.4° EL</span></div>
+      <div class="scope-trow"><span class="scope-tlabel">SENSOR</span> <span>GODEYE-3</span></div>
+      <div class="scope-trow"><span class="scope-tlabel">COLLECT</span> <span>MULTI-SPECTRAL</span></div>
+    </div>
+
+    <!-- Range indicator tick marks along oval edge (cosmetic) -->
+    <div class="scope-tick scope-tick-n">▼</div>
+    <div class="scope-tick scope-tick-s">▲</div>
+    <div class="scope-tick scope-tick-e">◀</div>
+    <div class="scope-tick scope-tick-w">▶</div>
+
+  </div><!-- /scope-hud -->
+
+  <div id="crt-overlay"     class="hidden"></div>
+  <div id="night-overlay"   class="hidden"></div>
+  <div id="thermal-overlay" class="hidden"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- LEFT PANEL — DATA LAYERS                                   -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="left-panel" class="hud-panel">
+  <div class="panel-header">
+    <span>DATA LAYERS</span>
+    <button class="panel-collapse-btn" data-target="left-panel" title="Collapse">◁</button>
+  </div>
+  <div class="panel-body" id="left-panel-body">
+    <!-- Populated by ui.js -->
+  </div>
+  <!-- View Presets Section -->
+  <div style="border-top:1px solid var(--border);flex-shrink:0;">
+    <div class="panel-header" style="padding:5px 10px;font-size:0.62rem;cursor:pointer;" id="presets-toggle">
+      <span>⊕ QUICK JUMP</span><span id="presets-arrow">▾</span>
+    </div>
+    <div id="presets-body" class="preset-grid"></div>
+  </div>
+  <div class="panel-footer">
+    <button id="btn-generate-report" class="action-btn">📋 REPORT</button>
+    <button id="btn-screenshot"      class="action-btn">📷 CAPTURE</button>
+  </div>
+</div>
+<button id="left-panel-tab" class="panel-tab left-tab hidden">DATA LAYERS ▶</button>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- RIGHT PANEL — INTEL FEED                                   -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="right-panel" class="hud-panel">
+  <div class="panel-header">
+    <button class="panel-collapse-btn" data-target="right-panel" title="Collapse">▷</button>
+    <span>INTEL FEED</span>
+  </div>
+  <div class="panel-tabs" style="flex-wrap:wrap;">
+    <button class="tab-btn active" data-tab="live-news"  id="tab-btn-live-news">NEWS</button>
+    <button class="tab-btn"        data-tab="city-intel" id="tab-btn-city-intel">CITY</button>
+    <button class="tab-btn"        data-tab="sigint"     id="tab-btn-sigint">SIGINT</button>
+    <button class="tab-btn"        data-tab="assets"     id="tab-btn-assets">ASSETS</button>
+    <button class="tab-btn"        data-tab="markets"    id="tab-btn-markets">📊 MARKETS</button>
+    <button class="tab-btn"        data-tab="recon"      id="tab-btn-recon">🔍 RECON</button>
+    <button class="tab-btn"        data-tab="anu-osint"  id="tab-btn-anu-osint">🕵️ OSINT</button>
+    <button class="tab-btn"        data-tab="alerts"     id="tab-btn-alerts">🚨 ALERTS</button>
+  </div>
+  <div class="panel-body" id="right-panel-body">
+    <div id="tab-live-news"  class="tab-content active"></div>
+    <div id="tab-city-intel" class="tab-content"></div>
+    <div id="tab-sigint"     class="tab-content"></div>
+    <div id="tab-assets"     class="tab-content"></div>
+    <div id="tab-markets"    class="tab-content" style="flex-direction:column;"></div>
+    <div id="tab-recon"      class="tab-content" style="flex-direction:column;"></div>
+    <div id="tab-anu-osint"  class="tab-content" style="flex-direction:column;"></div>
+    <div id="tab-alerts"     class="tab-content" style="flex-direction:column;"></div>
+  </div>
+</div>
+<button id="right-panel-tab" class="panel-tab right-tab hidden">◀ INTEL</button>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- BOTTOM STATUS BAR                                          -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="bottom-bar">
+  <div id="bottom-left">
+    <span id="local-time-display">LOCAL: --:--</span>
+  </div>
+  <div id="bottom-ticker-wrap">
+    <div id="bottom-ticker">AIS: CONNECTING | FLIGHTS: -- | SATS: -- | CONFLICTS: -- | NEWS: LOADING</div>
+  </div>
+  <div id="bottom-right">
+    <span id="map-coords">LAT: ---.---- &nbsp; LNG: ----.----</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- DRAW TOOLS TOOLBAR                                         -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="draw-toolbar" class="floating-toolbar">
+  <button class="draw-btn active" data-tool="none"    title="Pan/Select">✥</button>
+  <button class="draw-btn"        data-tool="circle"  title="Draw Circle">⊙</button>
+  <button class="draw-btn"        data-tool="polygon" title="Draw Polygon">⬡</button>
+  <button class="draw-btn"        data-tool="line"    title="Measure Distance">↔</button>
+  <button class="draw-btn"        id="btn-clear-draws"   title="Clear All">⌫</button>
+  <button class="draw-btn"        id="btn-export-draws"  title="Export GeoJSON">↓</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- FLOATING PANELS                                            -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+
+<!-- Time Slider -->
+<div id="time-slider-panel" class="floating-panel hidden">
+  <div class="panel-header">
+    <span>⏱ TIME PLAYBACK — HISTORICAL MODE</span>
+    <button class="close-btn" id="btn-close-timeslider">✕</button>
+  </div>
+  <div id="time-slider-body">
+    <input type="range" id="time-slider" min="0" max="30" value="0" step="1">
+    <div id="time-slider-label">TODAY</div>
+    <div class="time-controls">
+      <button id="btn-time-play" class="action-btn">▶ PLAY</button>
+      <select id="time-speed" style="background:var(--panel-bg);border:1px solid var(--border);color:var(--green);font-family:var(--font);font-size:0.72rem;padding:4px;">
+        <option value="1">1×</option>
+        <option value="5">5×</option>
+        <option value="10">10×</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Coordinate Popup -->
+<div id="coord-popup" class="floating-panel hidden">
+  <div class="panel-header">
+    <span>📍 COORDINATE INTEL</span>
+    <button class="close-btn" id="btn-close-coord">✕</button>
+  </div>
+  <div id="coord-popup-body"></div>
+</div>
+
+
+<!-- Camera Popup -->
+<div id="camera-popup" class="floating-panel hidden">
+  <div class="panel-header">
+    <span id="camera-popup-title">📹 SURVEILLANCE FEED</span>
+    <button class="close-btn" id="btn-close-camera">✕</button>
+  </div>
+  <div id="camera-popup-body" style="padding:8px;">
+    <div class="camera-feed-container">
+      <img id="camera-feed-img" src="" alt="Feed" width="300" height="200">
+      <div class="camera-overlay-text" id="camera-overlay-text"></div>
+      <div class="signal-lost hidden" id="signal-lost">📡 SIGNAL LOST</div>
+    </div>
+  </div>
+</div>
+
+<!-- Help Modal -->
+<div id="help-modal" class="modal hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <span>⊕ GODEYE — HELP & REFERENCE</span>
+      <button class="close-btn" id="btn-close-help">✕</button>
+    </div>
+    <div class="modal-body">
+      <h3>KEYBOARD SHORTCUTS</h3>
+      <table class="help-table">
+        <tr><td>F</td><td>Toggle fullscreen</td></tr>
+        <tr><td>M</td><td>Toggle 2D / 3D mode</td></tr>
+        <tr><td>A</td><td>Toggle audio</td></tr>
+        <tr><td>/</td><td>Focus search bar</td></tr>
+        <tr><td>1–6</td><td>Visual filter modes</td></tr>
+        <tr><td>ESC</td><td>Close panels / cancel draw</td></tr>
+      </table>
+      <h3>SEARCH SYNTAX</h3>
+      <table class="help-table">
+        <tr><td>"London"</td><td>City or country name</td></tr>
+        <tr><td>"40.7, -74.0"</td><td>Lat/lng coordinates</td></tr>
+        <tr><td>"KJFK"</td><td>ICAO airport code</td></tr>
+        <tr><td>"235982000"</td><td>Vessel MMSI number</td></tr>
+        <tr><td>"25544"</td><td>Satellite NORAD ID</td></tr>
+        <tr><td>"8.8.8.8"</td><td>IP address geolocation</td></tr>
+        <tr><td>"a3c3e7"</td><td>Aircraft ICAO24 hex</td></tr>
+      </table>
+      <h3>API KEYS (edit js/config.js)</h3>
+      <table class="help-table">
+        <tr><td>MAPBOX_TOKEN</td><td>mapbox.com/account — free</td></tr>
+        <tr><td>CESIUM_TOKEN</td><td>ion.cesium.com — free</td></tr>
+        <tr><td>AISSTREAM_KEY</td><td>aisstream.io — free</td></tr>
+        <tr><td>ACLED_KEY</td><td>acleddata.com — free research</td></tr>
+      </table>
+      <h3>DATA SOURCES</h3>
+      <table class="help-table">
+        <tr><td>Aircraft</td><td>OpenSky Network (no key)</td></tr>
+        <tr><td>Ships</td><td>AISStream.io WebSocket</td></tr>
+        <tr><td>Satellites</td><td>Celestrak TLE + satellite.js</td></tr>
+        <tr><td>Earthquakes</td><td>USGS GeoJSON + NASA EONET</td></tr>
+        <tr><td>Conflicts</td><td>ACLED + GDELT</td></tr>
+        <tr><td>News</td><td>GDELT + RSS feeds</td></tr>
+        <tr><td>Geocoding</td><td>Nominatim / OpenStreetMap</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- CDN LIBRARIES — loaded here (after body renders) so the   -->
+<!-- loading screen animation plays while they download.        -->
+<!-- CesiumJS is NOT loaded here — it's lazy-loaded on demand. -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/satellite.js@4.1.3/dist/satellite.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- GODEYE MODULES — Load order matters                     -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<script src="js/config.js"></script>
+<script src="js/state.js"></script>
+<script src="js/utils/cors.js"></script>
+<script src="js/utils/api.js"></script>
+<script src="js/utils/geo.js"></script>
+<script src="js/tools/audio.js"></script>
+<script src="js/map2d.js"></script>
+<script src="js/map3d.js"></script>
+<!-- Original layers -->
+<script src="js/layers/maritime.js"></script>
+<script src="js/layers/aircraft.js"></script>
+<script src="js/layers/ships.js"></script>
+<script src="js/layers/satellites.js"></script>
+<script src="js/layers/earthquakes.js"></script>
+<script src="js/layers/conflicts.js"></script>
+<script src="js/layers/cyber.js"></script>
+<script src="js/layers/nofly.js"></script>
+<script src="js/layers/cameras.js"></script>
+<script src="js/layers/news.js"></script>
+<script src="js/layers/osmFlow.js"></script>
+<!-- OSIRIS new layers -->
+<script src="js/layers/fires.js"></script>
+<script src="js/layers/weather.js"></script>
+<script src="js/layers/war_alerts.js"></script>
+<script src="js/layers/infrastructure.js"></script>
+<script src="js/layers/gps_jamming.js"></script>
+<script src="js/layers/day_night.js"></script>
+<script src="js/layers/live_news_geo.js"></script>
+<!-- Original panels -->
+<script src="js/panels/sigint.js"></script>
+<script src="js/panels/livefeed.js"></script>
+<script src="js/panels/cityintel.js"></script>
+<!-- OSIRIS new panels -->
+<script src="js/panels/markets.js"></script>
+<script src="js/panels/recon.js"></script>
+<script src="js/panels/anuosint.js"></script>
+<script src="js/panels/alerts.js"></script>
+<!-- Tools -->
+<script src="js/tools/search.js"></script>
+<script src="js/tools/draw.js"></script>
+<script src="js/tools/report.js"></script>
+<script src="js/tools/timeslider.js"></script>
+<script src="js/tools/share.js"></script>
+<script src="js/ui.js"></script>
+
+<!-- Server Config Bootstrap — runs BEFORE app init, patches CONFIG with server-side flags -->
+<script>
+(async function _serverBootstrap() {
+  // Only runs when served via server.js (not file:// or plain static)
+  if (window.location.protocol === 'file:') return;
+  try {
+    const r = await fetch('/api/config', { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) return; // plain static host — skip
+    const cfg = await r.json();
+    // Patch global CONFIG with server capabilities
+    CONFIG.SERVER_MODE   = true;
+    CONFIG.HAS_AISSTREAM = cfg.HAS_AISSTREAM || false;
+    CONFIG.HAS_ACLED     = cfg.HAS_ACLED     || false;
+    CONFIG.HAS_FIRMS     = cfg.HAS_FIRMS     || false;
+    CONFIG.HAS_N2YO      = cfg.HAS_N2YO      || false;
+    // Redirect OSINT endpoint to server proxy
+    if (cfg.OSINT_PRIMARY)  CONFIG.OSINT_PRIMARY_URL  = '/api/osint';
+    if (cfg.OSINT_FALLBACK) CONFIG.OSINT_FALLBACK_URL = '/api/osint';
+    console.log('[GODEYE] Server mode active — keys injected server-side', cfg);
+  } catch(e) {
+    // Not running under server.js — fully OK for local dev
+    console.log('[GODEYE] Local mode — using config.js keys directly');
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,92 @@
+/* ============================================================
+   GODEYE — Loading Screen Styles
+   ============================================================ */
+#loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Share Tech Mono', monospace;
+  color: #00ff41;
+  transition: opacity 0.8s ease;
+}
+
+#loading-screen.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-logo {
+  font-size: 2.8rem;
+  font-weight: bold;
+  letter-spacing: 0.3em;
+  text-shadow: 0 0 30px #00ff41, 0 0 60px #00ff41;
+  animation: logoGlow 2s ease-in-out infinite alternate;
+  margin-bottom: 0.3em;
+}
+
+.loading-subtitle {
+  font-size: 0.85rem;
+  letter-spacing: 0.4em;
+  color: #005510;
+  margin-bottom: 3em;
+}
+
+@keyframes logoGlow {
+  from { text-shadow: 0 0 20px #00ff41, 0 0 40px #00ff41; }
+  to   { text-shadow: 0 0 40px #00ff41, 0 0 80px #00ff41, 0 0 120px #00ff4188; }
+}
+
+.loading-terminal {
+  width: 540px;
+  min-height: 110px;
+  text-align: left;
+  font-size: 0.9rem;
+  line-height: 1.9;
+  margin-bottom: 2em;
+}
+
+.loading-line {
+  display: flex;
+  justify-content: space-between;
+  opacity: 0;
+  animation: fadeInLine 0.3s ease forwards;
+}
+
+.loading-line .line-label { color: #00cc33; }
+.loading-line .line-bar   { color: #00ff41; letter-spacing: -1px; }
+.loading-line .line-pct   { color: #00aa22; min-width: 40px; text-align: right; }
+
+@keyframes fadeInLine {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.loading-bar-container {
+  width: 540px;
+  height: 6px;
+  background: #001a00;
+  border: 1px solid #00ff4144;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.8em;
+}
+
+#loading-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #005510, #00ff41);
+  box-shadow: 0 0 12px #00ff41;
+  transition: width 0.4s ease;
+}
+
+#loading-percent {
+  font-size: 1.1rem;
+  letter-spacing: 0.2em;
+  color: #00ff41;
+  text-shadow: 0 0 10px #00ff41;
+}

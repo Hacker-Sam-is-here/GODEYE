@@ -18,12 +18,20 @@ const LayerCameras = (() => {
   ];
 
   let _cameras = [...STATIC_CAMERAS];
-  let _loaded  = false;
   let _cameraInterval = null;
 
-  // â”€â”€ Load scraped Insecam data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Rewrite http:// stream URLs through server proxy when on https://
+  // Fixes mixed-content block on Render (https) loading http:// camera IPs
+  function _proxyStream(url) {
+    if (!url) return url;
+    if (window.location.protocol === 'https:' && url.startsWith('http://')) {
+      return `/api/cam-proxy?url=${encodeURIComponent(url)}`;
+    }
+    return url;
+  }
+
+  // ── Load scraped Insecam data ──────────────────────────────────
   async function _loadInsecamData() {
-    if (_loaded) return;
     try {
       const res  = await fetch('data/insecam_cameras.json');
       if (!res.ok) throw new Error('Not found');
@@ -33,17 +41,17 @@ const LayerCameras = (() => {
         name:         [c.city, c.country].filter(Boolean).join(', ') || 'Camera #' + c.id,
         lat:          c.lat,
         lng:          c.lng,
-        stream:       c.stream,
+        stream:       _proxyStream(c.stream),   // rewrite http:// → /api/cam-proxy
+        streamRaw:    c.stream,                  // keep original for insecam link
         country:      c.country,
         city:         c.city,
         manufacturer: c.manufacturer,
         insecamId:    c.id,
       })).filter(c => c.stream && c.lat && c.lng);
       _cameras = [...STATIC_CAMERAS, ...insecam];
-      _loaded  = true;
       STATE.setLayerCount('cameras', _cameras.length);
       MAP2D.setSource(SRC, _buildGeoJSON());
-      EventBus.emit('sigint:log', { cat:'CAM', msg:`INSECAM: ${insecam.length} live cameras loaded globally` });
+      EventBus.emit('sigint:log', { cat:'CAM', msg:`INSECAM: ${insecam.length} live cameras loaded across ${new Set(insecam.map(c=>c.country)).size} countries` });
     } catch(e) {
       console.warn('[Cameras] Could not load insecam_cameras.json:', e.message);
     }
@@ -162,6 +170,10 @@ const LayerCameras = (() => {
       EventBus.on('map2d:styleChanged', () => {
         if (STATE.layers.cameras.active) { MAP2D.setSource(SRC, _buildGeoJSON()); _addLayer(); }
       });
+      // Reload camera data every 10 min — stays in sync with server auto-scrape cycle
+      setInterval(() => {
+        if (STATE.layers.cameras.active) _loadInsecamData();
+      }, 10 * 60 * 1000);
     },
     toggle(active) {
       if (active) {

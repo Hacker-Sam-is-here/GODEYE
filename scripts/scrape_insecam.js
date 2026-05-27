@@ -128,7 +128,7 @@ async function scrapeCountry(cc) {
 
   let pages = 1;
   try { pages = parseInt(first.split('pagenavigator("?page=", ')[1].split(',')[0], 10) || 1; } catch(e) {}
-  const maxPages = Math.min(pages, 4); // cap at 4 pages (24 cams)
+  const maxPages = pages; // scrape ALL pages
   console.log(`${maxPages} pages`);
 
   // Collect IDs from all pages

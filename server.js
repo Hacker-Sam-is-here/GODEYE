@@ -153,6 +153,47 @@ app.get('/api/osint', async (req, res) => {
     }
   }
 });
+});
+
+// ── Camera stream proxy — solves mixed-content block ─────────
+//    Browser on https:// can't load http:// camera images directly.
+//    This endpoint fetches the frame server-side and relays it.
+//    GET /api/cam-proxy?url=http://1.2.3.4:8080/image.jpg
+const CAM_ALLOWED_PATTERNS = [
+  /^\d+\.\d+\.\d+\.\d+(:\d+)?$/, // bare IP[:port]
+  /insecam\.org$/,
+  /webcams\.nyctmc\.org$/,
+  /images\.wsdot\.wa\.gov$/,
+  /jamcams\.tfl\.gov\.uk$/,
+  /images\.data\.gov\.sg$/,
+];
+
+app.get('/api/cam-proxy', async (req, res) => {
+  const target = req.query.url;
+  if (!target) return res.status(400).end('Missing url');
+
+  let hostname;
+  try { hostname = new URL(target).hostname; } catch { return res.status(400).end('Invalid URL'); }
+
+  const allowed = CAM_ALLOWED_PATTERNS.some(p => p.test(hostname));
+  if (!allowed) return res.status(403).end(`Host not allowed: ${hostname}`);
+
+  try {
+    const r = await fetch(target, {
+      headers: { 'User-Agent': 'GODEYE/1.0' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return res.status(r.status).end();
+    const ct = r.headers.get('content-type') || 'image/jpeg';
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Cache-Control', 'no-cache, no-store');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    const buf = await r.arrayBuffer();
+    res.end(Buffer.from(buf));
+  } catch (e) {
+    res.status(504).end('Camera timeout');
+  }
+});
 
 // ── Fallback: serve index.html for any unmatched route ────────
 app.get('*', (req, res) => {

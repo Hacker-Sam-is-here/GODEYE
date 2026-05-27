@@ -159,10 +159,116 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// ── Server startup ─────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🛰 GODEYE server running on port ${PORT}`);
-  console.log(`   AIS: ${KEYS.AISSTREAM ? '✓' : '✗ not set'}`);
+  console.log(`   AIS:   ${KEYS.AISSTREAM   ? '✓' : '✗ not set'}`);
   console.log(`   ACLED: ${KEYS.ACLED_EMAIL ? '✓' : '✗ not set'}`);
-  console.log(`   FIRMS: ${KEYS.FIRMS ? '✓' : '✗ not set'}`);
-  console.log(`   N2YO: ${KEYS.N2YO ? '✓' : '✗ not set'}`);
+  console.log(`   FIRMS: ${KEYS.FIRMS       ? '✓' : '✗ not set'}`);
+  console.log(`   N2YO:  ${KEYS.N2YO        ? '✓' : '✗ not set'}`);
+
+  _startSelfPing();
+  _startCCTVScheduler();
 });
+
+// ═══════════════════════════════════════════════════════════════
+//  SELF-PING — keeps Render free tier awake
+//  Pings /api/config every 14 minutes (under the 15-min sleep threshold)
+// ═══════════════════════════════════════════════════════════════
+function _startSelfPing() {
+  // Render injects RENDER_EXTERNAL_URL automatically — no manual config needed
+  const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+  const PING_INTERVAL_MS = 14 * 60 * 1000; // 14 minutes
+
+  if (!process.env.RENDER_EXTERNAL_URL) {
+    console.log('   Self-ping: skipped (not on Render — local dev mode)');
+    return;
+  }
+
+  console.log(`   Self-ping: active → ${selfUrl}/api/config every 14 min`);
+
+  setInterval(async () => {
+    try {
+      const r = await fetch(`${selfUrl}/api/config`, { signal: AbortSignal.timeout(10000) });
+      console.log(`[PING] ✓ ${new Date().toISOString()} — status ${r.status}`);
+    } catch (e) {
+      console.warn(`[PING] ✗ Failed: ${e.message}`);
+    }
+  }, PING_INTERVAL_MS);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CCTV AUTO-SCRAPER — regenerates insecam_cameras.json every 10 min
+//  Runs scrape_insecam.js as a child process in the background
+// ═══════════════════════════════════════════════════════════════
+const { spawn } = require('child_process');
+const fs = require('fs');
+
+let _cctvLastRun   = null;
+let _cctvRunning   = false;
+let _cctvCameraCount = 0;
+
+function _runScraper() {
+  if (_cctvRunning) {
+    console.log('[CCTV] Scraper already running — skipping cycle');
+    return;
+  }
+  _cctvRunning = true;
+  console.log(`[CCTV] Starting scrape at ${new Date().toISOString()}`);
+
+  const scraper = spawn(process.execPath, [
+    path.join(__dirname, 'scripts', 'scrape_insecam.js')
+  ], {
+    cwd: __dirname,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  scraper.stdout.on('data', d => {
+    const line = d.toString().trim();
+    if (line.includes('Total:') || line.includes('✅')) console.log('[CCTV]', line);
+  });
+
+  scraper.stderr.on('data', d => console.warn('[CCTV ERR]', d.toString().trim()));
+
+  scraper.on('close', code => {
+    _cctvRunning = false;
+    _cctvLastRun = new Date();
+    if (code === 0) {
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'insecam_cameras.json'), 'utf8'));
+        _cctvCameraCount = Array.isArray(data) ? data.length : 0;
+        console.log(`[CCTV] ✅ Done — ${_cctvCameraCount} cameras | ${_cctvLastRun.toISOString()}`);
+      } catch (e) {
+        console.warn('[CCTV] Could not read output file:', e.message);
+      }
+    } else {
+      console.warn(`[CCTV] ✗ Scraper exited with code ${code}`);
+    }
+  });
+}
+
+// Expose scrape status for the frontend
+app.get('/api/cctv/status', (req, res) => {
+  res.json({
+    lastRun:     _cctvLastRun,
+    running:     _cctvRunning,
+    cameraCount: _cctvCameraCount,
+  });
+});
+
+// Manual trigger endpoint (useful for testing)
+app.post('/api/cctv/refresh', (req, res) => {
+  if (_cctvRunning) return res.json({ status: 'already_running' });
+  _runScraper();
+  res.json({ status: 'started' });
+});
+
+function _startCCTVScheduler() {
+  const CCTV_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+  // Run immediately on startup, then every 10 min
+  console.log('   CCTV scraper: scheduled every 10 minutes');
+  _runScraper();
+  setInterval(_runScraper, CCTV_INTERVAL_MS);
+}
+

@@ -4,9 +4,6 @@ node_modules/
 # Environment — NEVER commit real keys
 .env
 
-# Scraped data (large, regenerate with scrape_insecam.js)
-data/insecam_cameras.json
-
 # OS / Editor
 .DS_Store
 Thumbs.db

@@ -238,15 +238,22 @@ function _startSelfPing() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  CCTV AUTO-SCRAPER — regenerates insecam_cameras.json every 10 min
-//  Runs scrape_insecam.js as a child process in the background
+//  CCTV AUTO-SCRAPER — runs super_scrape.js every 5 minutes
+//  Super scraper collects from: all countries + all types + rating
 // ═══════════════════════════════════════════════════════════════
 const { spawn } = require('child_process');
 const fs = require('fs');
 
-let _cctvLastRun   = null;
-let _cctvRunning   = false;
+let _cctvLastRun     = null;
+let _cctvRunning     = false;
 let _cctvCameraCount = 0;
+
+// Load count from existing file on startup
+try {
+  const existing = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'insecam_cameras.json'), 'utf8'));
+  _cctvCameraCount = Array.isArray(existing) ? existing.length : 0;
+  console.log(`   CCTV seed data: ${_cctvCameraCount} cameras already on disk`);
+} catch(e) { /* no seed file yet */ }
 
 function _runScraper() {
   if (_cctvRunning) {
@@ -254,10 +261,10 @@ function _runScraper() {
     return;
   }
   _cctvRunning = true;
-  console.log(`[CCTV] Starting scrape at ${new Date().toISOString()}`);
+  console.log(`[CCTV] Super scrape starting at ${new Date().toISOString()}`);
 
   const scraper = spawn(process.execPath, [
-    path.join(__dirname, 'scripts', 'scrape_insecam.js')
+    path.join(__dirname, 'scripts', 'super_scrape.js')
   ], {
     cwd: __dirname,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -265,10 +272,16 @@ function _runScraper() {
 
   scraper.stdout.on('data', d => {
     const line = d.toString().trim();
-    if (line.includes('Total:') || line.includes('✅')) console.log('[CCTV]', line);
+    // Log progress milestones without flooding
+    if (/PHASE|✅|Total:|Progress:|COMPLETE|✓ Discovery|cameras$/.test(line)) {
+      console.log('[CCTV]', line);
+    }
   });
 
-  scraper.stderr.on('data', d => console.warn('[CCTV ERR]', d.toString().trim()));
+  scraper.stderr.on('data', d => {
+    const line = d.toString().trim();
+    if (line) console.warn('[CCTV ERR]', line.substring(0, 200));
+  });
 
   scraper.on('close', code => {
     _cctvRunning = false;
@@ -277,38 +290,37 @@ function _runScraper() {
       try {
         const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'insecam_cameras.json'), 'utf8'));
         _cctvCameraCount = Array.isArray(data) ? data.length : 0;
-        console.log(`[CCTV] ✅ Done — ${_cctvCameraCount} cameras | ${_cctvLastRun.toISOString()}`);
+        console.log(`[CCTV] ✅ Done — ${_cctvCameraCount} cameras | next run in 5 min`);
       } catch (e) {
         console.warn('[CCTV] Could not read output file:', e.message);
       }
     } else {
-      console.warn(`[CCTV] ✗ Scraper exited with code ${code}`);
+      console.warn(`[CCTV] ✗ Exited with code ${code}`);
     }
   });
 }
 
-// Expose scrape status for the frontend
+// ── Status & control endpoints ────────────────────────────────
 app.get('/api/cctv/status', (req, res) => {
   res.json({
     lastRun:     _cctvLastRun,
     running:     _cctvRunning,
     cameraCount: _cctvCameraCount,
+    scraper:     'super_scrape.js (all countries + all types + rating)',
+    intervalMin: 5,
   });
 });
 
-// Manual trigger endpoint (useful for testing)
 app.post('/api/cctv/refresh', (req, res) => {
-  if (_cctvRunning) return res.json({ status: 'already_running' });
+  if (_cctvRunning) return res.json({ status: 'already_running', since: _cctvLastRun });
   _runScraper();
   res.json({ status: 'started' });
 });
 
 function _startCCTVScheduler() {
-  const CCTV_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-
-  // Run immediately on startup, then every 10 min
-  console.log('   CCTV scraper: scheduled every 10 minutes');
-  _runScraper();
-  setInterval(_runScraper, CCTV_INTERVAL_MS);
+  const INTERVAL = 5 * 60 * 1000; // 5 minutes
+  console.log('   CCTV super scraper: scheduled every 5 minutes');
+  _runScraper(); // run immediately on startup
+  setInterval(_runScraper, INTERVAL);
 }
 
